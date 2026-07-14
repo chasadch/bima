@@ -314,12 +314,28 @@ def extract_wall_u(doc):
             if wall_type is None:
                 continue
             
-            # Filter: Only use walls containing "brick" in the type name AND having function set to Exterior (1)
+            # Filter: Only use walls containing brick materials in their layers AND having function set to Exterior (1)
             type_name = wall_type.get_Parameter(BuiltInParameter.ALL_MODEL_TYPE_NAME).AsString() or ""
             func_param = wall_type.get_Parameter(BuiltInParameter.FUNCTION_PARAM)
             is_exterior = func_param and func_param.HasValue and func_param.AsInteger() == 1
             
-            if "brick" not in type_name.lower() or not is_exterior:
+            has_brick_layer = False
+            cs = wall_type.GetCompoundStructure()
+            if cs:
+                for idx in range(cs.LayerCount):
+                    mat_id = cs.GetMaterialId(idx)
+                    if mat_id != ElementId.InvalidElementId:
+                        mat = doc.GetElement(mat_id)
+                        if mat and any(kw in mat.Name.lower() for kw in _KEYWORDS_BRICK):
+                            has_brick_layer = True
+                            break
+            
+            # Fallback: if compound structure is not queryable, check the type name as fallback
+            if not has_brick_layer:
+                if any(kw in type_name.lower() for kw in _KEYWORDS_BRICK):
+                    has_brick_layer = True
+
+            if not has_brick_layer or not is_exterior:
                 type_cache[type_id] = (None, [])
                 continue
                 
@@ -784,18 +800,29 @@ def extract_quantities(doc):
             if db_key == "insulation":
                 db_key = _get_insulation_key_from_thickness(width_ft)
 
+            # Try native extraction first (takes care of cuts, joins, windows/doors subtracts)
+            vol_cuft = 0.0
+            area_sqft = 0.0
+            try:
+                vol_cuft = wall.GetMaterialVolume(mat_id)
+                area_sqft = wall.GetMaterialArea(mat_id)
+            except Exception:
+                pass
+
             if uses_volume:
-                # Volume = area × layer width
-                area_param = wall.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED)
-                if area_param and area_param.HasValue:
-                    vol_cuft = area_param.AsDouble() * width_ft
-                    vol_cum = vol_cuft * (cfg.FT_TO_M ** 3)  # ft³ → m³
-                    results[db_key] += vol_cum
+                if vol_cuft <= 0:
+                    area_param = wall.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED)
+                    if area_param and area_param.HasValue:
+                        vol_cuft = area_param.AsDouble() * width_ft
+                vol_cum = vol_cuft * (cfg.FT_TO_M ** 3)  # ft³ → m³
+                results[db_key] += vol_cum
             else:
-                area_param = wall.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED)
-                if area_param and area_param.HasValue:
-                    area_sqm = area_param.AsDouble() * cfg.SQFT_TO_SQM
-                    results[db_key] += area_sqm
+                if area_sqft <= 0:
+                    area_param = wall.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED)
+                    if area_param and area_param.HasValue:
+                        area_sqft = area_param.AsDouble()
+                area_sqm = area_sqft * cfg.SQFT_TO_SQM
+                results[db_key] += area_sqm
 
     # --- Roofs ---
     roofs = (
@@ -827,18 +854,29 @@ def extract_quantities(doc):
             if db_key == "insulation":
                 db_key = _get_insulation_key_from_thickness(width_ft)
 
+            # Try native extraction first
+            vol_cuft = 0.0
+            area_sqft = 0.0
+            try:
+                vol_cuft = roof.GetMaterialVolume(mat_id)
+                area_sqft = roof.GetMaterialArea(mat_id)
+            except Exception:
+                pass
+
             if uses_volume:
-                # Volume = area × layer width
-                area_param = roof.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED)
-                if area_param and area_param.HasValue:
-                    vol_cuft = area_param.AsDouble() * width_ft
-                    vol_cum = vol_cuft * (cfg.FT_TO_M ** 3)  # ft³ → m³
-                    results[db_key] += vol_cum
+                if vol_cuft <= 0:
+                    area_param = roof.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED)
+                    if area_param and area_param.HasValue:
+                        vol_cuft = area_param.AsDouble() * width_ft
+                vol_cum = vol_cuft * (cfg.FT_TO_M ** 3)  # ft³ → m³
+                results[db_key] += vol_cum
             else:
-                area_param = roof.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED)
-                if area_param and area_param.HasValue:
-                    area_sqm = area_param.AsDouble() * cfg.SQFT_TO_SQM
-                    results[db_key] += area_sqm
+                if area_sqft <= 0:
+                    area_param = roof.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED)
+                    if area_param and area_param.HasValue:
+                        area_sqft = area_param.AsDouble()
+                area_sqm = area_sqft * cfg.SQFT_TO_SQM
+                results[db_key] += area_sqm
 
     # --- Floors ---
     floors = (
@@ -870,18 +908,29 @@ def extract_quantities(doc):
             if db_key == "insulation":
                 db_key = _get_insulation_key_from_thickness(width_ft)
 
+            # Try native extraction first
+            vol_cuft = 0.0
+            area_sqft = 0.0
+            try:
+                vol_cuft = floor.GetMaterialVolume(mat_id)
+                area_sqft = floor.GetMaterialArea(mat_id)
+            except Exception:
+                pass
+
             if uses_volume:
-                # Volume = area × layer width
-                area_param = floor.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED)
-                if area_param and area_param.HasValue:
-                    vol_cuft = area_param.AsDouble() * width_ft
-                    vol_cum = vol_cuft * (cfg.FT_TO_M ** 3)  # ft³ → m³
-                    results[db_key] += vol_cum
+                if vol_cuft <= 0:
+                    area_param = floor.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED)
+                    if area_param and area_param.HasValue:
+                        vol_cuft = area_param.AsDouble() * width_ft
+                vol_cum = vol_cuft * (cfg.FT_TO_M ** 3)  # ft³ → m³
+                results[db_key] += vol_cum
             else:
-                area_param = floor.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED)
-                if area_param and area_param.HasValue:
-                    area_sqm = area_param.AsDouble() * cfg.SQFT_TO_SQM
-                    results[db_key] += area_sqm
+                if area_sqft <= 0:
+                    area_param = floor.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED)
+                    if area_param and area_param.HasValue:
+                        area_sqft = area_param.AsDouble()
+                area_sqm = area_sqft * cfg.SQFT_TO_SQM
+                results[db_key] += area_sqm
 
     # --- Windows (glazing area) ---
     windows = (
