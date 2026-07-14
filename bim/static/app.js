@@ -3,6 +3,11 @@ let materialsDB = {};
 let currentQuantities = {};
 let predictedMetrics = {};
 
+// Unit System Variables
+let currentUnitSystem = 'metric';
+const CONV_SQM_TO_SQFT = 10.76391;
+const CONV_CUM_TO_CUFT = 35.31467;
+
 // Charts Instances
 let costChart = null;
 let carbonChart = null;
@@ -65,6 +70,18 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // 7. Setup Live Sync Pull Button
     document.getElementById("btn-pull-revit-api").addEventListener("click", pullRevitLiveSync);
+
+    // 8. Setup Unit System Toggle
+    const unitSelect = document.getElementById("select-unit-system");
+    if (unitSelect) {
+        unitSelect.addEventListener("change", (e) => {
+            const oldSystem = currentUnitSystem;
+            currentUnitSystem = e.target.value;
+            updateUILabelsAndQuantities(oldSystem, currentUnitSystem);
+            renderDatabaseEditor();
+            recalculateBIMEstimates();
+        });
+    }
 });
 
 // -------------------------------------------------------------
@@ -93,6 +110,42 @@ function setupTabs() {
     });
 }
 
+function updateUILabelsAndQuantities(oldSystem, newSystem) {
+    const keys = [
+        "wall_brick", "wall_aac", "wall_concrete",
+        "insulation_25", "insulation_50", "insulation_75", "insulation_100",
+        "glazing_single", "glazing_double", "glazing_triple"
+    ];
+
+    keys.forEach(k => {
+        const inputEl = document.getElementById(`qty-${k}`);
+        if (!inputEl) return;
+
+        let val = parseFloat(inputEl.value) || 0;
+        const isArea = k.includes("insulation") || k.includes("glazing");
+
+        // Convert input value
+        if (oldSystem === 'metric' && newSystem === 'imperial') {
+            val = val * (isArea ? CONV_SQM_TO_SQFT : CONV_CUM_TO_CUFT);
+        } else if (oldSystem === 'imperial' && newSystem === 'metric') {
+            val = val / (isArea ? CONV_SQM_TO_SQFT : CONV_CUM_TO_CUFT);
+        }
+        inputEl.value = val.toFixed(2);
+
+        // Update label
+        const label = document.querySelector(`label[for="qty-${k}"]`);
+        if (label) {
+            let labelText = label.innerText;
+            if (newSystem === 'imperial') {
+                labelText = labelText.replace("(m²)", "(ft²)").replace("(m³)", "(ft³)");
+            } else {
+                labelText = labelText.replace("(ft²)", "(m²)").replace("(ft³)", "(m³)");
+            }
+            label.innerText = labelText;
+        }
+    });
+}
+
 // -------------------------------------------------------------
 // DATABASE FETCH & DISPLAY
 // -------------------------------------------------------------
@@ -111,13 +164,30 @@ function renderDatabaseEditor() {
     tbody.innerHTML = "";
 
     for (const [key, mat] of Object.entries(materialsDB)) {
+        let displayUnit = mat.unit;
+        let displayCarbon = mat.carbon;
+        let displayCost = mat.cost;
+
+        if (currentUnitSystem === 'imperial') {
+            const isArea = mat.unit.includes("²");
+            if (isArea) {
+                displayUnit = "ft²";
+                displayCarbon = mat.carbon / CONV_SQM_TO_SQFT;
+                displayCost = mat.cost / CONV_SQM_TO_SQFT;
+            } else if (mat.unit.includes("³")) {
+                displayUnit = "ft³";
+                displayCarbon = mat.carbon / CONV_CUM_TO_CUFT;
+                displayCost = mat.cost / CONV_CUM_TO_CUFT;
+            }
+        }
+
         const tr = document.createElement("tr");
         tr.innerHTML = `
             <td><strong>${key}</strong></td>
             <td>${mat.name}</td>
-            <td>${mat.unit}</td>
-            <td><input type="number" step="0.01" class="db-carbon-input" data-key="${key}" value="${mat.carbon}"></td>
-            <td><input type="number" step="1" class="db-cost-input" data-key="${key}" value="${mat.cost}"></td>
+            <td>${displayUnit}</td>
+            <td><input type="number" step="0.0001" class="db-carbon-input" data-key="${key}" value="${displayCarbon.toFixed(4)}"></td>
+            <td><input type="number" step="0.01" class="db-cost-input" data-key="${key}" value="${displayCost.toFixed(2)}"></td>
         `;
         tbody.appendChild(tr);
     }
@@ -129,12 +199,22 @@ function renderDatabaseEditor() {
 
         carbonInputs.forEach(input => {
             const key = input.getAttribute("data-key");
-            materialsDB[key].carbon = parseFloat(input.value);
+            let val = parseFloat(input.value) || 0;
+            if (currentUnitSystem === 'imperial') {
+                const isArea = materialsDB[key].unit.includes("²");
+                val = val * (isArea ? CONV_SQM_TO_SQFT : CONV_CUM_TO_CUFT);
+            }
+            materialsDB[key].carbon = val;
         });
 
         costInputs.forEach(input => {
             const key = input.getAttribute("data-key");
-            materialsDB[key].cost = parseFloat(input.value);
+            let val = parseFloat(input.value) || 0;
+            if (currentUnitSystem === 'imperial') {
+                const isArea = materialsDB[key].unit.includes("²");
+                val = val * (isArea ? CONV_SQM_TO_SQFT : CONV_CUM_TO_CUFT);
+            }
+            materialsDB[key].cost = val;
         });
 
         alert("Rates database updated successfully! Calculations will now use these updated rates.");
@@ -220,7 +300,11 @@ async function recalculateBIMEstimates() {
     
     currentQuantities = {};
     keys.forEach(k => {
-        const val = parseFloat(document.getElementById(`qty-${k}`).value) || 0;
+        let val = parseFloat(document.getElementById(`qty-${k}`).value) || 0;
+        if (currentUnitSystem === 'imperial') {
+            const isArea = k.includes("insulation") || k.includes("glazing");
+            val = val / (isArea ? CONV_SQM_TO_SQFT : CONV_CUM_TO_CUFT);
+        }
         currentQuantities[k] = val;
     });
 
@@ -266,14 +350,34 @@ function renderBreakdownTable(materials) {
     }
 
     for (const [key, item] of Object.entries(materials)) {
+        let displayQty = item.quantity;
+        let displayUnit = item.unit;
+        let displayUnitCarbon = item.unit_carbon;
+        let displayUnitCost = item.unit_cost;
+
+        if (currentUnitSystem === 'imperial') {
+            const isArea = item.unit.includes("²");
+            if (isArea) {
+                displayQty = item.quantity * CONV_SQM_TO_SQFT;
+                displayUnit = "ft²";
+                displayUnitCarbon = item.unit_carbon / CONV_SQM_TO_SQFT;
+                displayUnitCost = item.unit_cost / CONV_SQM_TO_SQFT;
+            } else if (item.unit.includes("³")) {
+                displayQty = item.quantity * CONV_CUM_TO_CUFT;
+                displayUnit = "ft³";
+                displayUnitCarbon = item.unit_carbon / CONV_CUM_TO_CUFT;
+                displayUnitCost = item.unit_cost / CONV_CUM_TO_CUFT;
+            }
+        }
+
         const tr = document.createElement("tr");
         tr.innerHTML = `
             <td><strong>${item.name}</strong></td>
-            <td>${item.quantity.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
-            <td>${item.unit}</td>
-            <td>${item.unit_carbon.toFixed(2)}</td>
+            <td>${displayQty.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
+            <td>${displayUnit}</td>
+            <td>${displayUnitCarbon.toFixed(4)}</td>
             <td>${item.total_carbon.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
-            <td>${item.unit_cost.toLocaleString()}</td>
+            <td>${displayUnitCost.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
             <td>${item.total_cost.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
         `;
         tbody.appendChild(tr);
@@ -773,7 +877,12 @@ function parseRevitCSV(csvContent) {
     let mappedCount = 0;
     for (const [key, val] of Object.entries(results)) {
         if (val > 0) {
-            document.getElementById(`qty-${key}`).value = val.toFixed(2);
+            let convertedVal = val;
+            if (currentUnitSystem === 'imperial') {
+                const isArea = key.includes("insulation") || key.includes("glazing");
+                convertedVal = val * (isArea ? CONV_SQM_TO_SQFT : CONV_CUM_TO_CUFT);
+            }
+            document.getElementById(`qty-${key}`).value = convertedVal.toFixed(2);
             mappedCount++;
         } else {
             document.getElementById(`qty-${key}`).value = 0;
@@ -787,11 +896,18 @@ function parseRevitCSV(csvContent) {
         tbody.innerHTML = "";
         
         parsedData.forEach(item => {
+            let displayQty = item.qty;
+            let displayUnit = item.unit;
+            if (currentUnitSystem === 'imperial') {
+                const isArea = item.unit.includes("²");
+                displayQty = item.qty * (isArea ? CONV_SQM_TO_SQFT : CONV_CUM_TO_CUFT);
+                displayUnit = isArea ? "ft²" : "ft³";
+            }
             const tr = document.createElement("tr");
             tr.innerHTML = `
                 <td><strong>${item.category}</strong></td>
-                <td>${item.qty.toFixed(2)}</td>
-                <td>${item.unit}</td>
+                <td>${displayQty.toFixed(2)}</td>
+                <td>${displayUnit}</td>
                 <td><span class="info-label">${item.mappedKey}</span></td>
             `;
             tbody.appendChild(tr);
@@ -831,16 +947,27 @@ async function pullRevitLiveSync() {
                     const inputEl = document.getElementById(`qty-${key}`);
                     if (inputEl) {
                         const parsedVal = parseFloat(val) || 0;
-                        inputEl.value = parsedVal.toFixed(2);
+                        let convertedVal = parsedVal;
+                        if (currentUnitSystem === 'imperial') {
+                            const isArea = key.includes("insulation") || key.includes("glazing");
+                            convertedVal = parsedVal * (isArea ? CONV_SQM_TO_SQFT : CONV_CUM_TO_CUFT);
+                        }
+                        inputEl.value = convertedVal.toFixed(2);
                         if (parsedVal > 0) {
                             mappedCount++;
                             // Lookup material display name
                             const displayName = materialsDB[key] ? materialsDB[key].name : key;
-                            const unit = materialsDB[key] ? materialsDB[key].unit : "";
+                            let displayUnit = materialsDB[key] ? materialsDB[key].unit : "";
+                            let displayQty = parsedVal;
+                            if (currentUnitSystem === 'imperial') {
+                                const isArea = displayUnit.includes("²");
+                                displayQty = parsedVal * (isArea ? CONV_SQM_TO_SQFT : CONV_CUM_TO_CUFT);
+                                displayUnit = isArea ? "ft²" : "ft³";
+                            }
                             parsedData.push({
                                 category: displayName,
-                                qty: parsedVal,
-                                unit: unit,
+                                qty: displayQty,
+                                unit: displayUnit,
                                 mappedKey: key
                             });
                         }

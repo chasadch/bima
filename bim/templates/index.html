@@ -67,7 +67,14 @@
                     <span class="sub-heading">Integrated BIM & ML Framework</span>
                     <h1>Sustainability & Carbon Dashboard</h1>
                 </div>
-                <div class="project-info">
+                <div class="project-info" style="display: flex; align-items: center; gap: 1rem;">
+                    <div class="info-tag" style="display: flex; align-items: center; gap: 0.5rem; background: var(--bg-card); border: 1px solid var(--border-color); padding: 0.5rem 1rem; border-radius: 6px;">
+                        <label for="select-unit-system" style="font-weight: 500; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0;"><i class="fa-solid fa-ruler-combined"></i> Unit System:</label>
+                        <select id="select-unit-system" style="background: var(--bg-app); color: var(--text-color); border: 1px solid var(--border-color); border-radius: 4px; padding: 0.2rem 0.5rem; font-size: 0.85rem; outline: none; cursor: pointer;">
+                            <option value="metric" selected>Metric (m², m³)</option>
+                            <option value="imperial">Imperial (ft², ft³)</option>
+                        </select>
+                    </div>
                     <div class="info-tag">
                         <i class="fa-solid fa-building"></i>
                         <span>Prototype Model (GFA: <span id="header-gfa-val">13,447</span> sqft)</span>
