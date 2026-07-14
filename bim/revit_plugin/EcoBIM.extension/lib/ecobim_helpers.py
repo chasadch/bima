@@ -313,6 +313,16 @@ def extract_wall_u(doc):
             wall_type = doc.GetElement(type_id)
             if wall_type is None:
                 continue
+            
+            # Filter: Only use walls containing "brick" in the type name AND having function set to Exterior (1)
+            type_name = wall_type.get_Parameter(BuiltInParameter.ALL_MODEL_TYPE_NAME).AsString() or ""
+            func_param = wall_type.get_Parameter(BuiltInParameter.FUNCTION_PARAM)
+            is_exterior = func_param and func_param.HasValue and func_param.AsInteger() == 1
+            
+            if "brick" not in type_name.lower() or not is_exterior:
+                type_cache[type_id] = (None, [])
+                continue
+                
             # Try reading U-value directly from the type parameter first (includes air films, matches Revit UI)
             u_si = _get_u_from_type_param(wall_type)
             warns = []
@@ -322,11 +332,7 @@ def extract_wall_u(doc):
                 if u_si is None:
                     warns.append(
                         u"  ⚠ Wall type '{}' has no thermal data"
-                        .format(
-                            wall_type.get_Parameter(
-                                BuiltInParameter.ALL_MODEL_TYPE_NAME
-                            ).AsString() if wall_type else "Unknown"
-                        )
+                        .format(type_name)
                     )
             type_cache[type_id] = (u_si, warns)
 
