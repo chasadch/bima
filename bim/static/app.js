@@ -780,6 +780,16 @@ function parseRevitCSV(csvContent) {
         glazing_triple: 0
     };
 
+    // Strict keyword lists per category
+    const _KEYWORDS_BRICK = ["brick", "burnt clay", "clay brick"];
+    const _KEYWORDS_AAC = ["aac", "autoclaved"];
+    const _KEYWORDS_CONCRETE = ["concrete block", "cement block", "concrete masonry", "cmu"];
+
+    let wallCounter = 0;
+    let inslCounter = 0;
+    let winCounter = 0;
+    let roofCounter = 0;
+
     lines.forEach((line, index) => {
         if (!line.trim() || index === 0) return; // skip header/empty lines
 
@@ -801,29 +811,41 @@ function parseRevitCSV(csvContent) {
         if (numbers.length === 0) return;
 
         // Revit take-offs: Volume is typically in m3, Area in m2.
-        // We look for largest numbers in columns or assume the last/middle numeric columns represent qty
         let qty = numbers[0];
-        // If there are multiple numbers, find one that looks like a quantity
         if (numbers.length > 1) {
             qty = numbers[numbers.length - 1]; // typically the last column is Total/Quantity
         }
+
+        let rawName = "";
+        for (let i = 0; i < columns.length; i++) {
+            const col = columns[i].replace(/"/g, "").trim();
+            if (col && isNaN(col) && col.length > 2) {
+                rawName = col;
+                break;
+            }
+        }
+        if (!rawName) rawName = "Unknown Material";
 
         let mappedKey = "";
         let category = "";
         let unit = "";
 
-        // Keyword checking logic
-        if (rowText.includes("brick")) {
+        const isBrick = _KEYWORDS_BRICK.some(kw => rowText.includes(kw));
+        const isAac = _KEYWORDS_AAC.some(kw => rowText.includes(kw));
+        const isConcrete = _KEYWORDS_CONCRETE.some(kw => rowText.includes(kw));
+
+        // Keyword checking logic with priority: Brick -> AAC -> Concrete block
+        if (isBrick) {
             mappedKey = "wall_brick";
             category = "Brick Wall Block";
             unit = "m³";
             results.wall_brick += qty;
-        } else if (rowText.includes("aac")) {
+        } else if (isAac) {
             mappedKey = "wall_aac";
             category = "AAC Block Wall";
             unit = "m³";
             results.wall_aac += qty;
-        } else if (rowText.includes("concrete") && (rowText.includes("block") || rowText.includes("cmu") || rowText.includes("masonry"))) {
+        } else if (isConcrete) {
             mappedKey = "wall_concrete";
             category = "Concrete Block Wall";
             unit = "m³";
@@ -869,7 +891,21 @@ function parseRevitCSV(csvContent) {
         }
 
         if (mappedKey) {
-            parsedData.push({ category, qty, unit, mappedKey });
+            let elementId = "";
+            if (mappedKey.startsWith("wall")) {
+                wallCounter++;
+                elementId = `WALL-${String(wallCounter).padStart(4, '0')}`;
+            } else if (mappedKey.startsWith("insulation")) {
+                inslCounter++;
+                elementId = `INSL-${String(inslCounter).padStart(4, '0')}`;
+            } else if (mappedKey.startsWith("glazing")) {
+                winCounter++;
+                elementId = `WIN-${String(winCounter).padStart(4, '0')}`;
+            } else if (mappedKey.startsWith("roof")) {
+                roofCounter++;
+                elementId = `ROOF-${String(roofCounter).padStart(4, '0')}`;
+            }
+            parsedData.push({ elementId, rawName, category, qty, unit, mappedKey });
         }
     });
 
@@ -890,6 +926,9 @@ function parseRevitCSV(csvContent) {
     }
 
     if (mappedCount > 0) {
+        // Automatically determine U-values from parsed quantities
+        autoDetermineUValuesFromQuantities(results);
+
         // Display summary table
         const card = document.getElementById("parsed-results-card");
         const tbody = document.querySelector("#table-parsed-csv tbody");
@@ -905,6 +944,8 @@ function parseRevitCSV(csvContent) {
             }
             const tr = document.createElement("tr");
             tr.innerHTML = `
+                <td><strong>${item.elementId}</strong></td>
+                <td>${item.rawName}</td>
                 <td><strong>${item.category}</strong></td>
                 <td>${displayQty.toFixed(2)}</td>
                 <td>${displayUnit}</td>
@@ -943,6 +984,11 @@ async function pullRevitLiveSync() {
                 let mappedCount = 0;
                 const parsedData = [];
                 
+                let wallCounter = 0;
+                let inslCounter = 0;
+                let winCounter = 0;
+                let roofCounter = 0;
+
                 for (const [key, val] of Object.entries(quantities)) {
                     const inputEl = document.getElementById(`qty-${key}`);
                     if (inputEl) {
@@ -964,7 +1010,26 @@ async function pullRevitLiveSync() {
                                 displayQty = parsedVal * (isArea ? CONV_SQM_TO_SQFT : CONV_CUM_TO_CUFT);
                                 displayUnit = isArea ? "ft²" : "ft³";
                             }
+
+                            // Generate sequential ID
+                            let elementId = "";
+                            if (key.startsWith("wall")) {
+                                wallCounter++;
+                                elementId = `WALL-${String(wallCounter).padStart(4, '0')}`;
+                            } else if (key.startsWith("insulation")) {
+                                inslCounter++;
+                                elementId = `INSL-${String(inslCounter).padStart(4, '0')}`;
+                            } else if (key.startsWith("glazing")) {
+                                winCounter++;
+                                elementId = `WIN-${String(winCounter).padStart(4, '0')}`;
+                            } else if (key.startsWith("roof")) {
+                                roofCounter++;
+                                elementId = `ROOF-${String(roofCounter).padStart(4, '0')}`;
+                            }
+
                             parsedData.push({
+                                elementId: elementId,
+                                rawName: displayName + " (Synced)",
                                 category: displayName,
                                 qty: displayQty,
                                 unit: displayUnit,
@@ -983,6 +1048,8 @@ async function pullRevitLiveSync() {
                     parsedData.forEach(item => {
                         const tr = document.createElement("tr");
                         tr.innerHTML = `
+                            <td><strong>${item.elementId}</strong></td>
+                            <td>${item.rawName}</td>
                             <td><strong>${item.category}</strong></td>
                             <td>${item.qty.toFixed(2)}</td>
                             <td>${item.unit}</td>
@@ -998,29 +1065,46 @@ async function pullRevitLiveSync() {
 
             // 2. Process U-values
             let uValuesUpdated = false;
-            if (uValues && Object.keys(uValues).length > 0) {
-                const wallU = document.getElementById("input-wall-u");
-                const roofU = document.getElementById("input-roof-u");
-                const windowU = document.getElementById("input-window-u");
+            const wallU = document.getElementById("input-wall-u");
+            const roofU = document.getElementById("input-roof-u");
+            const windowU = document.getElementById("input-window-u");
 
+            const statusWall = document.getElementById("status-wall-u");
+            const statusRoof = document.getElementById("status-roof-u");
+            const statusWindow = document.getElementById("status-window-u");
+
+            if (uValues && Object.keys(uValues).length > 0 && 
+                (uValues.wall_u !== undefined && uValues.wall_u !== null)) {
+                // We have extracted U-values from Revit!
                 if (uValues.wall_u !== undefined && uValues.wall_u !== null) {
                     wallU.value = uValues.wall_u;
                     document.getElementById("lbl-wall-u").innerText = parseFloat(uValues.wall_u).toFixed(4);
+                    statusWall.innerText = "(Extracted)";
+                    statusWall.style.color = "#10b981";
                     uValuesUpdated = true;
                 }
                 if (uValues.roof_u !== undefined && uValues.roof_u !== null) {
                     roofU.value = uValues.roof_u;
                     document.getElementById("lbl-roof-u").innerText = parseFloat(uValues.roof_u).toFixed(4);
+                    statusRoof.innerText = "(Extracted)";
+                    statusRoof.style.color = "#10b981";
                     uValuesUpdated = true;
                 }
                 if (uValues.window_u !== undefined && uValues.window_u !== null) {
                     windowU.value = uValues.window_u;
                     document.getElementById("lbl-window-u").innerText = parseFloat(uValues.window_u).toFixed(4);
+                    statusWindow.innerText = "(Extracted)";
+                    statusWindow.style.color = "#10b981";
                     uValuesUpdated = true;
                 }
-                if (uValuesUpdated) {
-                    updatedItems.push("U-values");
-                }
+            } else if (quantities && Object.keys(quantities).length > 0) {
+                // Fallback: Compute U-values from quantities
+                autoDetermineUValuesFromQuantities(quantities);
+                uValuesUpdated = true;
+            }
+
+            if (uValuesUpdated) {
+                updatedItems.push("U-values");
             }
 
             // 3. Process GFA
@@ -1028,7 +1112,6 @@ async function pullRevitLiveSync() {
                 const gfaInput = document.getElementById("input-gfa");
                 gfaInput.value = gfa;
                 document.getElementById("header-gfa-val").innerText = parseFloat(gfa).toLocaleString();
-                uValuesUpdated = true;
                 updatedItems.push("Gross Floor Area");
             }
 
@@ -1059,4 +1142,74 @@ async function pullRevitLiveSync() {
         console.error("Failed to pull live sync data:", e);
         alert("Failed to connect to direct sync API. Check if your Flask server is running on port 5000.");
     }
+}
+
+function autoDetermineUValuesFromQuantities(quantities) {
+    const wallU = document.getElementById("input-wall-u");
+    const roofU = document.getElementById("input-roof-u");
+    const windowU = document.getElementById("input-window-u");
+
+    // Check if insulation is present
+    const insulationQty = (quantities.insulation_25 || 0) + 
+                          (quantities.insulation_50 || 0) + 
+                          (quantities.insulation_75 || 0) + 
+                          (quantities.insulation_100 || 0);
+    const hasInsulation = insulationQty > 0;
+
+    // Predominant wall type
+    let wallType = "wall_brick";
+    let maxWallQty = quantities.wall_brick || 0;
+    if ((quantities.wall_aac || 0) > maxWallQty) {
+        wallType = "wall_aac";
+        maxWallQty = quantities.wall_aac || 0;
+    }
+    if ((quantities.wall_concrete || 0) > maxWallQty) {
+        wallType = "wall_concrete";
+        maxWallQty = quantities.wall_concrete || 0;
+    }
+
+    // Set Wall U-value
+    let computedWallU = 0.127; // default
+    if (wallType === "wall_brick") {
+        computedWallU = hasInsulation ? 0.0712 : 0.5878;
+    } else if (wallType === "wall_concrete") {
+        computedWallU = hasInsulation ? 0.0763 : 1.3084;
+    } else if (wallType === "wall_aac") {
+        computedWallU = hasInsulation ? 0.0603 : 0.2395;
+    }
+    wallU.value = computedWallU;
+    document.getElementById("lbl-wall-u").innerText = computedWallU.toFixed(4);
+    const statusWall = document.getElementById("status-wall-u");
+    statusWall.innerText = "(Calculated)";
+    statusWall.style.color = "#10b981";
+
+    // Set Roof U-value
+    let computedRoofU = hasInsulation ? 0.0751 : 1.0384;
+    roofU.value = computedRoofU;
+    document.getElementById("lbl-roof-u").innerText = computedRoofU.toFixed(4);
+    const statusRoof = document.getElementById("status-roof-u");
+    statusRoof.innerText = "(Calculated)";
+    statusRoof.style.color = "#10b981";
+
+    // Set Window U-value (predominant glazing type)
+    let windowType = "glazing_single";
+    let maxWinQty = quantities.glazing_single || 0;
+    if ((quantities.glazing_double || 0) > maxWinQty) {
+        windowType = "glazing_double";
+        maxWinQty = quantities.glazing_double || 0;
+    }
+    if ((quantities.glazing_triple || 0) > maxWinQty) {
+        windowType = "glazing_triple";
+        maxWinQty = quantities.glazing_triple || 0;
+    }
+    let computedWinU = 0.5031;
+    if (windowType === "glazing_single") computedWinU = 0.6496;
+    else if (windowType === "glazing_double") computedWinU = 0.5031;
+    else if (windowType === "glazing_triple") computedWinU = 0.2563;
+
+    windowU.value = computedWinU;
+    document.getElementById("lbl-window-u").innerText = computedWinU.toFixed(4);
+    const statusWindow = document.getElementById("status-window-u");
+    statusWindow.innerText = "(Calculated)";
+    statusWindow.style.color = "#10b981";
 }

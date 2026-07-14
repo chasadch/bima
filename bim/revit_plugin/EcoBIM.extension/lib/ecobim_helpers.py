@@ -673,12 +673,10 @@ def extract_gfa(doc):
 #  Extract Material Quantities for Embodied Carbon
 # ------------------------------------------------------------------ #
 
-# Keyword → material database key mapping
-_WALL_KEYWORDS = {
-    "brick": "wall_brick",
-    "aac": "wall_aac",
-}
-_WALL_CONCRETE_KEYWORDS = ["concrete block", "cmu", "concrete masonry"]
+# Strict keyword lists per category
+_KEYWORDS_BRICK = ["brick", "burnt clay", "clay brick"]
+_KEYWORDS_AAC = ["aac", "autoclaved"]
+_KEYWORDS_CONCRETE = ["concrete block", "cement block", "concrete masonry", "cmu"]
 
 _INSULATION_THICKNESS_MAP = {
     "25": "insulation_25",
@@ -697,19 +695,23 @@ _GLAZING_KEYWORDS = {
 def _classify_material(name_lower):
     """Return (db_key, uses_volume) based on a lowercase material name."""
 
-    # Walls
-    for kw, key in _WALL_KEYWORDS.items():
-        if kw in name_lower:
-            return key, True
-    for kw in _WALL_CONCRETE_KEYWORDS:
-        if kw in name_lower:
-            return "wall_concrete", True
+    # 1. BRICK (Highest priority check to avoid brick block masonry falling to concrete block)
+    if any(kw in name_lower for kw in _KEYWORDS_BRICK):
+        return "wall_brick", True
+        
+    # 2. AAC
+    if any(kw in name_lower for kw in _KEYWORDS_AAC):
+        return "wall_aac", True
+        
+    # 3. CONCRETE BLOCK
+    if any(kw in name_lower for kw in _KEYWORDS_CONCRETE):
+        return "wall_concrete", True
 
-    # Insulation (includes EIFS/EFIS)
+    # 4. Insulation (includes EIFS/EFIS)
     if "eps" in name_lower or "insulation" in name_lower or "polystyrene" in name_lower or "eifs" in name_lower or "efis" in name_lower:
         return "insulation", False
 
-    # Glazing
+    # 5. Glazing
     if "glazing" in name_lower or "glass" in name_lower or "window" in name_lower:
         for kw, key in _GLAZING_KEYWORDS.items():
             if kw in name_lower:
