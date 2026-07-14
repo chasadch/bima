@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BIM & ML Carbon & Cost Estimator Dashboard</title>
+    <meta name="description" content="Integrated BIM and Machine Learning Framework for estimating Embodied Carbon, Operational Carbon, Energy, and Cost using Autodesk Revit data.">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Premium Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="app-sidebar">
+            <div class="sidebar-brand">
+                <i class="fa-solid fa-leaf green-icon"></i>
+                <div class="brand-text">
+                    <h2>EcoBIM</h2>
+                    <span>Carbon & Cost Estimator</span>
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-tab="dashboard">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#" class="nav-item" data-tab="calculator">
+                    <i class="fa-solid fa-calculator"></i>
+                    <span>BIM Quantities</span>
+                </a>
+                <a href="#" class="nav-item" data-tab="alternatives">
+                    <i class="fa-solid fa-sliders"></i>
+                    <span>Design Options</span>
+                </a>
+                <a href="#" class="nav-item" data-tab="database">
+                    <i class="fa-solid fa-database"></i>
+                    <span>Database Editor</span>
+                </a>
+                <a href="#" class="nav-item" data-tab="import">
+                    <i class="fa-solid fa-file-import"></i>
+                    <span>Revit Import</span>
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="revit-status">
+                    <i class="fa-solid fa-circle-check"></i>
+                    <span>ML Predictions Ready</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Dashboard Area -->
+        <main class="app-main">
+            <!-- Top Navbar -->
+            <header class="app-header">
+                <div class="header-title">
+                    <span class="sub-heading">Integrated BIM & ML Framework</span>
+                    <h1>Sustainability & Carbon Dashboard</h1>
+                </div>
+                <div class="project-info">
+                    <div class="info-tag">
+                        <i class="fa-solid fa-building"></i>
+                        <span>Prototype Model (GFA: <span id="header-gfa-val">13,447</span> sqft)</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- TAB 1: DASHBOARD -->
+            <section id="tab-dashboard" class="tab-panel active">
+                <!-- Summary Metrics Grid -->
+                <div class="metrics-grid">
+                    <div class="metric-card gradient-card-blue">
+                        <div class="metric-icon">
+                            <i class="fa-solid fa-cloud"></i>
+                        </div>
+                        <div class="metric-data">
+                            <h3>Total Embodied Carbon</h3>
+                            <div class="metric-value"><span id="val-embodied-carbon">0.00</span> <span class="unit">kgCO₂e</span></div>
+                            <p class="metric-desc">Extraction & material manufacturing footprint</p>
+                        </div>
+                    </div>
+                    <div class="metric-card gradient-card-green">
+                        <div class="metric-icon">
+                            <i class="fa-solid fa-bolt"></i>
+                        </div>
+                        <div class="metric-data">
+                            <h3>Operational Energy</h3>
+                            <div class="metric-value"><span id="val-op-energy">0.00</span> <span class="unit">kBtu/yr</span></div>
+                            <p class="metric-desc">ML predicted yearly operations energy</p>
+                        </div>
+                    </div>
+                    <div class="metric-card gradient-card-teal">
+                        <div class="metric-icon">
+                            <i class="fa-solid fa-gauge-high"></i>
+                        </div>
+                        <div class="metric-data">
+                            <h3>Energy Use Intensity (EUI)</h3>
+                            <div class="metric-value"><span id="val-eui">0.00</span> <span class="unit">kBtu/ft²/yr</span></div>
+                            <p class="metric-desc">ML predicted annual energy intensity</p>
+                        </div>
+                    </div>
+                    <div class="metric-card gradient-card-orange">
+                        <div class="metric-icon">
+                            <i class="fa-solid fa-smog"></i>
+                        </div>
+                        <div class="metric-data">
+                            <h3>Operational Carbon</h3>
+                            <div class="metric-value"><span id="val-op-carbon">0.00</span> <span class="unit">kgCO₂e/yr</span></div>
+                            <p class="metric-desc">ML predicted yearly carbon emissions</p>
+                        </div>
+                    </div>
+                    <div class="metric-card gradient-card-purple">
+                        <div class="metric-icon">
+                            <i class="fa-solid fa-coins"></i>
+                        </div>
+                        <div class="metric-data">
+                            <h3>Total Material Cost</h3>
+                            <div class="metric-value"><span id="val-material-cost">0.00</span> <span class="unit">PKR</span></div>
+                            <p class="metric-desc">Based on custom database unit rates</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Envelope / Design Inputs & ML Prediction Panel -->
+                <div class="dashboard-row grid-2-1">
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <h2><i class="fa-solid fa-dna"></i> Building Envelope & Parameters</h2>
+                            <p>Adjust these parameters to update the Machine Learning predictions in real-time</p>
+                        </div>
+                        <div class="card-body">
+                            <div class="control-group">
+                                <label for="input-wall-u">Wall U-Value (IP: Btu/h·ft²·°F) <span class="info-label" id="lbl-wall-u">0.1270</span></label>
+                                <input type="range" id="input-wall-u" min="0.03" max="1.4" step="0.001" value="0.127">
+                                <span class="slider-hint">Lower = Better insulation. Brick ~0.58, AAC ~0.24, Concrete ~1.31</span>
+                            </div>
+                            
+                            <div class="control-group">
+                                <label for="input-roof-u">Roof U-Value (IP: Btu/h·ft²·°F) <span class="info-label" id="lbl-roof-u">0.1401</span></label>
+                                <input type="range" id="input-roof-u" min="0.03" max="1.1" step="0.001" value="0.1401">
+                                <span class="slider-hint">Concrete roof ~1.03, insulated roof ~0.14 to 0.04</span>
+                            </div>
+                            
+                            <div class="control-group">
+                                <label for="input-window-u">Window U-Value (IP: Btu/h·ft²·°F) <span class="info-label" id="lbl-window-u">0.5031</span></label>
+                                <input type="range" id="input-window-u" min="0.2" max="0.7" step="0.001" value="0.5031">
+                                <span class="slider-hint">Single glazing ~0.65, Double ~0.50, Triple ~0.26</span>
+                            </div>
+
+                            <div class="row-2-col">
+                                <div class="control-group">
+                                    <label for="input-gfa">Gross Floor Area (ft²)</label>
+                                    <input type="number" id="input-gfa" value="13447.45" step="100" min="100">
+                                </div>
+                                <div class="control-group">
+                                    <label for="input-lifespan">Analysis Lifespan (Years)</label>
+                                    <input type="number" id="input-lifespan" value="50" min="1" max="100">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Life Cycle Assessment (LCA) Target Card -->
+                    <div class="dashboard-card target-highlights">
+                        <div class="card-header">
+                            <h2><i class="fa-solid fa-seedling"></i> Life Cycle Emissions</h2>
+                        </div>
+                        <div class="card-body centered-flex">
+                            <div class="lca-gauge">
+                                <div class="lca-circle">
+                                    <span class="lca-val" id="val-lca-total">0.0</span>
+                                    <span class="lca-lbl">Total CO₂ (Tonnes)</span>
+                                </div>
+                            </div>
+                            <div class="lca-breakdown">
+                                <div class="breakdown-item">
+                                    <span class="dot blue"></span>
+                                    <span>Embodied: <strong id="lbl-lca-embodied">0%</strong></span>
+                                </div>
+                                <div class="breakdown-item">
+                                    <span class="dot orange"></span>
+                                    <span>Operational: <strong id="lbl-lca-operational">0%</strong></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Visualizations Grid -->
+                <div class="dashboard-row grid-2">
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <h2><i class="fa-solid fa-chart-pie"></i> Material Cost Breakdown (PKR)</h2>
+                        </div>
+                        <div class="card-body chart-container">
+                            <canvas id="costChart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <h2><i class="fa-solid fa-chart-area"></i> Cumulative Life Cycle Carbon (50 Years)</h2>
+                        </div>
+                        <div class="card-body chart-container">
+                            <canvas id="carbonChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 2: CALCULATOR (BIM QUANTITIES) -->
+            <section id="tab-calculator" class="tab-panel">
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h2><i class="fa-solid fa-cube"></i> Revit Material Quantities Input</h2>
+                        <p>Input quantities extracted from your Autodesk Revit schedules to calculate material cost and embodied carbon.</p>
+                    </div>
+                    <div class="card-body">
+                        <form id="calculator-form">
+                            <!-- Wall Quantities -->
+                            <div class="form-section">
+                                <h3 class="section-title"><i class="fa-solid fa-border-all"></i> Wall Construction (Structural Block Volume)</h3>
+                                <div class="grid-3">
+                                    <div class="control-group">
+                                        <label for="qty-wall_brick">9-inch Brick Wall (m³)</label>
+                                        <input type="number" id="qty-wall_brick" value="0" min="0" step="0.1">
+                                    </div>
+                                    <div class="control-group">
+                                        <label for="qty-wall_aac">6-inch AAC Block Wall (m³)</label>
+                                        <input type="number" id="qty-wall_aac" value="0" min="0" step="0.1">
+                                    </div>
+                                    <div class="control-group">
+                                        <label for="qty-wall_concrete">6-inch Concrete Block Wall (m³)</label>
+                                        <input type="number" id="qty-wall_concrete" value="0" min="0" step="0.1">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Insulation Quantities -->
+                            <div class="form-section">
+                                <h3 class="section-title"><i class="fa-solid fa-temperature-half"></i> Insulation Board (EPS Area)</h3>
+                                <div class="grid-4">
+                                    <div class="control-group">
+                                        <label for="qty-insulation_25">EPS 25mm Area (m²)</label>
+                                        <input type="number" id="qty-insulation_25" value="0" min="0" step="0.1">
+                                    </div>
+                                    <div class="control-group">
+                                        <label for="qty-insulation_50">EPS 50mm Area (m²)</label>
+                                        <input type="number" id="qty-insulation_50" value="0" min="0" step="0.1">
+                                    </div>
+                                    <div class="control-group">
+                                        <label for="qty-insulation_75">EPS 75mm Area (m²)</label>
+                                        <input type="number" id="qty-insulation_75" value="0" min="0" step="0.1">
+                                    </div>
+                                    <div class="control-group">
+                                        <label for="qty-insulation_100">EPS 100mm Area (m²)</label>
+                                        <input type="number" id="qty-insulation_100" value="0" min="0" step="0.1">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Glazing / Window Area -->
+                            <div class="form-section">
+                                <h3 class="section-title"><i class="fa-solid fa-window-maximize"></i> Window Systems (Glazing Area)</h3>
+                                <div class="grid-3">
+                                    <div class="control-group">
+                                        <label for="qty-glazing_single">Single Glazing Area (m²)</label>
+                                        <input type="number" id="qty-glazing_single" value="0" min="0" step="0.1">
+                                    </div>
+                                    <div class="control-group">
+                                        <label for="qty-glazing_double">Double Glazing Area (m²)</label>
+                                        <input type="number" id="qty-glazing_double" value="0" min="0" step="0.1">
+                                    </div>
+                                    <div class="control-group">
+                                        <label for="qty-glazing_triple">Triple Glazing Area (m²)</label>
+                                        <input type="number" id="qty-glazing_triple" value="0" min="0" step="0.1">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button type="button" class="btn btn-primary" id="btn-recalculate-qty">
+                                <i class="fa-solid fa-arrows-rotate"></i> Recalculate & Sync Dashboard
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Detailed Quantities Table -->
+                <div class="dashboard-card table-card">
+                    <div class="card-header">
+                        <h2><i class="fa-solid fa-list-check"></i> Material-Level Estimates Breakdown</h2>
+                    </div>
+                    <div class="card-body table-responsive">
+                        <table class="data-table" id="table-breakdown">
+                            <thead>
+                                <tr>
+                                    <th>Material Description</th>
+                                    <th>Quantity</th>
+                                    <th>Unit</th>
+                                    <th>Unit Carbon (kgCO₂e)</th>
+                                    <th>Total Carbon (kgCO₂e)</th>
+                                    <th>Unit Cost (PKR)</th>
+                                    <th>Total Cost (PKR)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Generated Dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 3: ALTERNATIVES COMPARISON -->
+            <section id="tab-alternatives" class="tab-panel">
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h2><i class="fa-solid fa-code-compare"></i> Compare Building Envelope Alternatives</h2>
+                        <p>Evaluate the economic and carbon impacts of three design alternatives side-by-side.</p>
+                    </div>
+                    <div class="card-body">
+                        <div class="alternatives-grid">
+                            <!-- Design 1: Baseline (Concrete block) -->
+                            <div class="alternative-column baseline">
+                                <h3>Design Option 1 (Baseline)</h3>
+                                <div class="form-group-alt">
+                                    <label>Wall Material</label>
+                                    <select id="alt1-wall">
+                                        <option value="wall_concrete" selected>6-inch Concrete Block</option>
+                                        <option value="wall_brick">9-inch Brick Wall</option>
+                                        <option value="wall_aac">6-inch AAC Block</option>
+                                    </select>
+                                </div>
+                                <div class="form-group-alt">
+                                    <label>Insulation</label>
+                                    <select id="alt1-insulation">
+                                        <option value="none">None</option>
+                                        <option value="insulation_25">EPS 25mm</option>
+                                        <option value="insulation_50">EPS 50mm</option>
+                                        <option value="insulation_75">EPS 75mm</option>
+                                        <option value="insulation_100">EPS 100mm</option>
+                                    </select>
+                                </div>
+                                <div class="form-group-alt">
+                                    <label>Window Glazing</label>
+                                    <select id="alt1-glazing">
+                                        <option value="glazing_single" selected>Single Glazing</option>
+                                        <option value="glazing_double">Double Glazing</option>
+                                        <option value="glazing_triple">Triple Glazing</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <!-- Design 2: Option A (Brick + 50mm EPS + Double Glazing) -->
+                            <div class="alternative-column option-a">
+                                <h3>Design Option 2</h3>
+                                <div class="form-group-alt">
+                                    <label>Wall Material</label>
+                                    <select id="alt2-wall">
+                                        <option value="wall_concrete">6-inch Concrete Block</option>
+                                        <option value="wall_brick" selected>9-inch Brick Wall</option>
+                                        <option value="wall_aac">6-inch AAC Block</option>
+                                    </select>
+                                </div>
+                                <div class="form-group-alt">
+                                    <label>Insulation</label>
+                                    <select id="alt2-insulation">
+                                        <option value="none">None</option>
+                                        <option value="insulation_25">EPS 25mm</option>
+                                        <option value="insulation_50" selected>EPS 50mm</option>
+                                        <option value="insulation_75">EPS 75mm</option>
+                                        <option value="insulation_100">EPS 100mm</option>
+                                    </select>
+                                </div>
+                                <div class="form-group-alt">
+                                    <label>Window Glazing</label>
+                                    <select id="alt2-glazing">
+                                        <option value="glazing_single">Single Glazing</option>
+                                        <option value="glazing_double" selected>Double Glazing</option>
+                                        <option value="glazing_triple">Triple Glazing</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Design 3: Option B (AAC block + 75mm EPS + Triple Glazing) -->
+                            <div class="alternative-column option-b">
+                                <h3>Design Option 3</h3>
+                                <div class="form-group-alt">
+                                    <label>Wall Material</label>
+                                    <select id="alt3-wall">
+                                        <option value="wall_concrete">6-inch Concrete Block</option>
+                                        <option value="wall_brick">9-inch Brick Wall</option>
+                                        <option value="wall_aac" selected>6-inch AAC Block</option>
+                                    </select>
+                                </div>
+                                <div class="form-group-alt">
+                                    <label>Insulation</label>
+                                    <select id="alt3-insulation">
+                                        <option value="none">None</option>
+                                        <option value="insulation_25">EPS 25mm</option>
+                                        <option value="insulation_50">EPS 50mm</option>
+                                        <option value="insulation_75" selected>EPS 75mm</option>
+                                        <option value="insulation_100">EPS 100mm</option>
+                                    </select>
+                                </div>
+                                <div class="form-group-alt">
+                                    <label>Window Glazing</label>
+                                    <select id="alt3-glazing">
+                                        <option value="glazing_single">Single Glazing</option>
+                                        <option value="glazing_double">Double Glazing</option>
+                                        <option value="glazing_triple" selected>Triple Glazing</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="centered-btn">
+                            <button type="button" class="btn btn-primary" id="btn-compare-options">
+                                <i class="fa-solid fa-chart-simple"></i> Run Comparative Analysis
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Comparison Result Visualizations -->
+                <div class="dashboard-row grid-2">
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <h2>Total Carbon Lifecycle Comparison (50 Years)</h2>
+                        </div>
+                        <div class="card-body chart-container">
+                            <canvas id="altCarbonChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <h2>Capital Cost Comparison (PKR)</h2>
+                        </div>
+                        <div class="card-body chart-container">
+                            <canvas id="altCostChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 4: DATABASE EDITOR -->
+            <section id="tab-database" class="tab-panel">
+                <div class="dashboard-card table-card">
+                    <div class="card-header">
+                        <h2><i class="fa-solid fa-sliders"></i> Carbon Factors & Cost Rate Database (PKR)</h2>
+                        <p>Customize the local emission factors and materials market pricing. Changes instantly propagate to calculator and alternative analyses.</p>
+                    </div>
+                    <div class="card-body table-responsive">
+                        <table class="data-table" id="table-database">
+                            <thead>
+                                <tr>
+                                    <th>Material ID</th>
+                                    <th>Description Name</th>
+                                    <th>Quantity Unit</th>
+                                    <th>Carbon Factor (kgCO₂e / unit)</th>
+                                    <th>Unit Price Rate (PKR / unit)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Generated Dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="card-body flex-right">
+                        <button type="button" class="btn btn-secondary" id="btn-reset-db">
+                            <i class="fa-solid fa-rotate-left"></i> Reset Defaults
+                        </button>
+                        <button type="button" class="btn btn-primary" id="btn-save-db">
+                            <i class="fa-solid fa-save"></i> Save & Apply Rates
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 5: REVIT IMPORT -->
+            <section id="tab-import" class="tab-panel">
+                <div class="dashboard-row grid-2-1">
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <h2><i class="fa-solid fa-upload"></i> Upload Revit Schedule CSV</h2>
+                            <p>Select and upload your Revit-exported schedule CSV. The system will automatically map building components, wall volumes, window glazing areas, and insulation sizes.</p>
+                        </div>
+                        <div class="card-body">
+                            <div class="upload-dropzone" id="csv-dropzone">
+                                <i class="fa-solid fa-file-csv upload-icon"></i>
+                                <p>Drag & drop your Revit CSV schedule here, or <span>browse files</span></p>
+                                <input type="file" id="csv-file-input" accept=".csv" style="display: none;">
+                            </div>
+                            <div class="import-actions flex-right" style="margin-top: 1.5rem;">
+                                <button type="button" class="btn btn-primary" id="btn-process-csv" disabled>
+                                    <i class="fa-solid fa-file-circle-check"></i> Parse & Populate Schedule
+                                </button>
+                            </div>
+                            
+                            <!-- Direct API Integration -->
+                            <div class="live-sync-section" style="margin-top: 2rem; border-top: 1px dashed var(--card-border); padding-top: 1.5rem;">
+                                <h3 class="section-title"><i class="fa-solid fa-wifi"></i> Live API Connection</h3>
+                                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                                    Push quantities, U-values, and GFA directly from Revit (via our pyRevit extension). Then pull them into this web dashboard instantly.
+                                </p>
+                                <button type="button" class="btn btn-secondary" id="btn-pull-revit-api" style="width: 100%; justify-content: center; border-color: var(--accent-teal); color: var(--text-primary);">
+                                    <i class="fa-solid fa-cloud-arrow-down" style="color: var(--accent-teal);"></i> Pull Revit Model Data (U-Values, GFA & Quantities)
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Format Guidelines -->
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <h2><i class="fa-solid fa-circle-info"></i> Formatting Guide</h2>
+                        </div>
+                        <div class="card-body info-list">
+                            <p>To successfully map Revit quantities, ensure your CSV contains headers matching these keywords:</p>
+                            <ul>
+                                <li><strong>Material Name:</strong> To detect bricks, concrete, AAC, EPS, single/double/triple glazing.</li>
+                                <li><strong>Volume:</strong> Volume of structural block components (m³).</li>
+                                <li><strong>Area:</strong> Area of windows or insulation boards (m²).</li>
+                            </ul>
+                            <div class="alert-box note-alert">
+                                <strong>Tip:</strong> Columns like "Material: Name", "Material: Volume", and "Material: Area" generated in standard Revit Material Takeoff schedules work perfectly!
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Parsed Log results -->
+                <div class="dashboard-card table-card" id="parsed-results-card" style="display: none;">
+                    <div class="card-header">
+                        <h2>Parsed Quantities from Revit Import</h2>
+                    </div>
+                    <div class="card-body table-responsive">
+                        <table class="data-table" id="table-parsed-csv">
+                            <thead>
+                                <tr>
+                                    <th>Detected Component Category</th>
+                                    <th>Extracted Raw Value</th>
+                                    <th>Unit Mapped</th>
+                                    <th>Assigned Mapped Variable</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Generated Dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Custom Scripts -->
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
